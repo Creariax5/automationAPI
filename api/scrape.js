@@ -2,34 +2,15 @@
 import { chromium } from 'playwright-chromium';
 
 export default async function handler(req, res) {
-    // CORS headers
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
-    if (req.method === 'OPTIONS') {
-        res.status(200).end();
-        return;
-    }
-    
-    if (req.method !== 'GET') {
-        return res.status(405).json({ error: 'Method not allowed' });
-    }
-    
-    const { address, chain = 'sonic' } = req.query;
-    
-    if (!address) {
-        return res.status(400).json({ 
-            error: 'Address parameter required',
-            usage: '/api/scrape?address=0x123...&chain=sonic'
-        });
-    }
+    if (req.method === 'OPTIONS') return res.status(200).end();
+    if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
+    if (!req.query.address) return res.status(400).json({ error: 'Address required' });
     
     let browser = null;
     
     try {
-        console.log(`🔍 Scraping ${address} on ${chain}...`);
-        
         browser = await chromium.launch({ 
             headless: true,
             args: ['--no-sandbox', '--disable-setuid-sandbox']
@@ -38,90 +19,62 @@ export default async function handler(req, res) {
         const page = await browser.newPage();
         const data = {};
         
-        // Intercepter les réponses API
         page.on('response', async (response) => {
-            if (response.url().includes('api.debank.com') && response.status() === 200) {
-                try {
-                    const json = await response.json();
-                    const url = response.url();
-                    
-                    if (url.includes('total_net_curve')) {
-                        data.net_curve = json;
-                        console.log('✅ Got net_curve');
-                    } else if (url.includes('used_chains')) {
-                        data.chains = json;
-                        console.log('✅ Got chains');
-                    } else if (url.includes('project_list')) {
-                        data.projects = json;
-                        console.log('✅ Got projects');
-                    } else if (url.includes('balance_list')) {
-                        data.balances = json;
-                        console.log('✅ Got balances');
+            if (!response.url().includes('api.debank.com') || response.status() !== 200) return;
+            
+            try {
+                const json = await response.json();
+                const url = response.url();
+                
+                if (url.includes('total_net_curve')) data.net_curve = json;
+                else if (url.includes('used_chains')) data.chains = json;
+                else if (url.includes('desc_dict')) data.desc = json;
+                else if (url.includes('project_list')) data.projects = json;
+                else if (url.includes('balance_list')) {
+                    if (!data.balances) data.balances = { data: [] };
+                    if (json.data) {
+                        const existing = new Set(data.balances.data.map(t => `${t.chain}_${t.id}`));
+                        json.data.forEach(token => {
+                            const id = `${token.chain}_${token.id}`;
+                            if (!existing.has(id)) {
+                                data.balances.data.push(token);
+                                existing.add(id);
+                            }
+                        });
                     }
-                } catch (e) {
-                    console.log('⚠️ JSON parse error:', e.message);
                 }
-            }
+            } catch (e) {}
         });
         
-        // Naviguer vers la page
-        await page.goto(`https://debank.com/profile/${address}?chain=${chain}`, {
-            waitUntil: 'networkidle',
-            timeout: 30000
-        });
+        await page.goto(`https://debank.com/profile/${req.query.address}`);
+        await page.waitForTimeout(5000);
         
-        // Attendre les données
-        await page.waitForTimeout(8000);
+        const walletValue = data.balances?.data?.reduce((sum, token) => 
+            sum + (token.amount * token.price), 0) || 0;
         
-        // Calculer les résumés
+        const defiValue = data.projects?.data?.reduce((sum, project) => 
+            sum + project.portfolio_item_list.reduce((pSum, item) => 
+                pSum + (item.stats?.net_usd_value || 0), 0), 0) || 0;
+        
         const summary = {
-            total_value: 0,
-            wallet_value: 0,
-            defi_value: 0,
-            token_count: 0,
-            last_update: new Date().toISOString(),
-            chain
+            total_value: walletValue + defiValue,
+            wallet_value: walletValue,
+            defi_value: defiValue,
+            token_count: data.balances?.data?.length || 0,
+            last_update: new Date().toISOString()
         };
         
-        // Calculer valeur du wallet
-        if (data.balances?.data) {
-            summary.wallet_value = data.balances.data.reduce(
-                (sum, token) => sum + (token.amount * token.price), 0
-            );
-            summary.token_count = data.balances.data.length;
-        }
-        
-        // Calculer valeur DeFi
-        if (data.projects?.data) {
-            summary.defi_value = data.projects.data.reduce((sum, project) => 
-                sum + project.portfolio_item_list.reduce(
-                    (pSum, item) => pSum + (item.stats?.net_usd_value || 0), 0
-                ), 0
-            );
-        }
-        
-        summary.total_value = summary.wallet_value + summary.defi_value;
-        
-        console.log(`💰 Total value: $${summary.total_value.toFixed(2)}`);
-        
-        res.status(200).json({
+        res.json({
             success: true,
-            address: address.toLowerCase(),
+            address: req.query.address.toLowerCase(),
             summary,
-            raw_data: data,
+            ...data,
             timestamp: Date.now()
         });
         
     } catch (error) {
-        console.error('❌ Scraping error:', error);
-        res.status(500).json({
-            success: false,
-            error: error.message,
-            timestamp: Date.now()
-        });
+        res.status(500).json({ success: false, error: error.message });
     } finally {
-        if (browser) {
-            await browser.close();
-        }
+        if (browser) await browser.close();
     }
 }

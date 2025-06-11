@@ -1,20 +1,10 @@
 {
-  "version": 2,
   "functions": {
     "api/scrape.js": {
       "maxDuration": 30
     }
   },
-  "builds": [
-    {
-      "src": "api/**/*.js",
-      "use": "@vercel/node"
-    }
-  ],
-  "routes": [
-    {
-      "src": "/api/(.*)",
-      "dest": "/api/$1"
-    }
-  ]
+  "buildCommand": "npm install playwright-chromium",
+  "framework": null,
+  "outputDirectory": "."
 }

@@ -2,13 +2,11 @@
   "name": "debank-scraper-vercel",
   "version": "1.0.0",
   "type": "module",
-  "main": "api/scrape.js",
   "scripts": {
-    "dev": "vercel dev",
-    "build": "echo 'API only - no build required'"
+    "test": "echo 'No tests'"
   },
   "dependencies": {
-    "playwright-chromium": "^1.40.0"
+    "playwright-chromium": "^1.53.0"
   },
   "engines": {
     "node": "18.x"
