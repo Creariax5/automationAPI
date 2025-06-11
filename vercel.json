@@ -1,0 +1,9 @@
+{
+  "functions": {
+    "api/scrape.js": {
+      "maxDuration": 30
+    }
+  },
+  "buildCommand": "npm install playwright-chromium",
+  "framework": null
+}

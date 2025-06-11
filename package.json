@@ -1,0 +1,16 @@
+{
+  "name": "debank-scraper-vercel",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vercel dev",
+    "build": "echo 'No build step required'",
+    "start": "vercel dev"
+  },
+  "dependencies": {
+    "playwright-chromium": "^1.40.0"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}
