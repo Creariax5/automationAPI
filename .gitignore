@@ -31,3 +31,4 @@ coverage/
 *.sublime-workspace
 *.sublime-project
 .vercel
+.env*.local
