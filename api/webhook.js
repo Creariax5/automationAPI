@@ -158,7 +158,7 @@ export default async function handler(req, res) {
                         // Try to wait for specific elements
                         try {
                             await page.waitForSelector('[data-testid="total-balance"], .HeaderInfo_totalAssets, .total-assets', {
-                                timeout: 5000
+                                timeout: 2500
                             });
                         } catch (e) {
                             console.log('Could not find balance elements, continuing...');
