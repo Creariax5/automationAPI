@@ -153,7 +153,7 @@ export default async function handler(req, res) {
                         });
                         
                         // Wait for content to load
-                        await page.waitForTimeout(8000);
+                        await page.waitForTimeout(4000);
                         
                         // Try to wait for specific elements
                         try {
