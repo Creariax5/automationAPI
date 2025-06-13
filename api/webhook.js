@@ -149,16 +149,16 @@ export default async function handler(req, res) {
                     try {
                         await page.goto('https://debank.com/profile/${address}', {
                             waitUntil: 'networkidle2',
-                            timeout: 3000
+                            timeout: 30000
                         });
                         
                         // Wait for content to load
-                        await page.waitForTimeout(2000);
+                        await page.waitForTimeout(8000);
                         
                         // Try to wait for specific elements
                         try {
                             await page.waitForSelector('[data-testid="total-balance"], .HeaderInfo_totalAssets, .total-assets', {
-                                timeout: 1500
+                                timeout: 5000
                             });
                         } catch (e) {
                             console.log('Could not find balance elements, continuing...');
