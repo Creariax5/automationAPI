@@ -149,7 +149,7 @@ export default async function handler(req, res) {
                     try {
                         await page.goto('https://debank.com/profile/${address}', {
                             waitUntil: 'networkidle2',
-                            timeout: 15000
+                            timeout: 5000
                         });
                         
                         // Wait for content to load
