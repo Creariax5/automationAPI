@@ -1,5 +1,9 @@
 {
   "functions": {
+    "api/webhook.js": {
+      "maxDuration": 30,
+      "memory": 1024
+    },
     "api/scrape.js": {
       "maxDuration": 30,
       "memory": 1024

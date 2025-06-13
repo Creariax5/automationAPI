@@ -1,23 +1,43 @@
-// 📄 api/scrape.js
+// 📄 api/webhook.js - Claude-compatible webhook endpoint
 export default async function handler(req, res) {
+    // CORS headers for Claude
     res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
     
-    if (req.method !== 'GET') return res.status(405).json({ error: 'Method not allowed' });
-    if (!req.query.address) return res.status(400).json({ error: 'Address required' });
+    // Handle preflight requests
+    if (req.method === 'OPTIONS') {
+        return res.status(200).end();
+    }
     
-    const { address } = req.query;
+    // Accept both GET and POST for flexibility
+    let address;
+    if (req.method === 'GET') {
+        address = req.query.address;
+    } else if (req.method === 'POST') {
+        address = req.body?.address;
+    } else {
+        return res.status(405).json({ error: 'Method not allowed' });
+    }
+    
+    if (!address) {
+        return res.status(400).json({ 
+            error: 'Address required', 
+            usage: 'GET: ?address=0x... or POST: {"address": "0x..."}'
+        });
+    }
     
     try {
-        console.log(`Scraping DeBank profile for address: ${address}`);
-        console.log(`Browserless token exists: ${!!process.env.BROWSERLESS_TOKEN}`);
-        console.log(`Token length: ${process.env.BROWSERLESS_TOKEN?.length || 0}`);
+        console.log(`🔍 Scraping DeBank profile for: ${address}`);
+        console.log(`🔑 Browserless token: ${!!process.env.BROWSERLESS_TOKEN ? 'Available' : 'Missing'}`);
         
-        // Si pas de token Browserless valide, utilisez les méthodes gratuites
+        // If no valid Browserless token, try free alternatives
         if (!process.env.BROWSERLESS_TOKEN || process.env.BROWSERLESS_TOKEN.length < 10) {
-            console.log('No valid Browserless token, trying free alternatives...');
+            console.log('⚠️ No valid Browserless token, trying free alternatives...');
             
-            // Alternative 1: Scrape.do (gratuit avec limite)
+            // Alternative 1: Scrape.do (free with limits)
             try {
+                console.log('🌐 Trying Scrape.do...');
                 const scrapeResponse = await fetch('https://api.scrape.do', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -35,17 +55,25 @@ export default async function handler(req, res) {
                         method: 'scrape.do',
                         address,
                         html_length: data.html?.length || 0,
-                        summary: { total_value: 0, wallet_value: 0, defi_value: 0, token_count: 0 },
-                        note: 'Free service used, limited data extraction'
+                        summary: { 
+                            total_value: 0, 
+                            wallet_value: 0, 
+                            defi_value: 0, 
+                            token_count: 0 
+                        },
+                        note: '🆓 Free service used - limited data extraction',
+                        timestamp: new Date().toISOString()
                     });
                 }
             } catch (e) {
-                console.log('Scrape.do failed:', e.message);
+                console.log('❌ Scrape.do failed:', e.message);
             }
             
-            // Alternative 2: Proxy simple
+            // Alternative 2: Simple proxy
             try {
-                const proxyResponse = await fetch(`https://api.allorigins.win/get?url=${encodeURIComponent(`https://debank.com/profile/${address}`)}`);
+                console.log('🔄 Trying proxy method...');
+                const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(`https://debank.com/profile/${address}`)}`;
+                const proxyResponse = await fetch(proxyUrl);
                 
                 if (proxyResponse.ok) {
                     const data = await proxyResponse.json();
@@ -54,22 +82,30 @@ export default async function handler(req, res) {
                         method: 'proxy',
                         address,
                         html_length: data.contents?.length || 0,
-                        summary: { total_value: 0, wallet_value: 0, defi_value: 0, token_count: 0 },
-                        note: 'Proxy used, basic HTML only'
+                        summary: { 
+                            total_value: 0, 
+                            wallet_value: 0, 
+                            defi_value: 0, 
+                            token_count: 0 
+                        },
+                        note: '🔄 Proxy used - basic HTML only',
+                        timestamp: new Date().toISOString()
                     });
                 }
             } catch (e) {
-                console.log('Proxy failed:', e.message);
+                console.log('❌ Proxy failed:', e.message);
             }
             
-            return res.json({
+            return res.status(503).json({
                 success: false,
                 error: 'No valid Browserless token and free alternatives failed',
-                suggestion: 'Get free token at https://browserless.io (1000 req/month)'
+                suggestion: '💡 Get free token at https://browserless.io (1000 requests/month)',
+                help: 'Add BROWSERLESS_TOKEN to your Vercel environment variables'
             });
         }
         
-        // Si token Browserless existe, l'utiliser
+        // Use Browserless with full scraping capability
+        console.log('🚀 Using Browserless for full scraping...');
         const response = await fetch(`https://production-sfo.browserless.io/function?token=${process.env.BROWSERLESS_TOKEN}`, {
             method: "POST",
             headers: {
@@ -81,6 +117,7 @@ export default async function handler(req, res) {
                 export default async ({ page }) => {
                     const data = {};
                     
+                    // Intercept API responses
                     page.on('response', async (response) => {
                         if (response.url().includes('api.debank.com') && response.status() === 200) {
                             try {
@@ -130,6 +167,7 @@ export default async function handler(req, res) {
                         console.log('Error navigating to page:', e.message);
                     }
                     
+                    // Calculate values
                     const walletValue = data.balances?.data?.reduce((sum, token) => 
                         sum + (token.amount * token.price), 0) || 0;
                     
@@ -142,16 +180,18 @@ export default async function handler(req, res) {
                         method: 'browserless',
                         address: '${address}',
                         summary: {
-                            total_value: walletValue + defiValue,
-                            wallet_value: walletValue,
-                            defi_value: defiValue,
-                            token_count: data.balances?.data?.length || 0
+                            total_value: Math.round((walletValue + defiValue) * 100) / 100,
+                            wallet_value: Math.round(walletValue * 100) / 100,
+                            defi_value: Math.round(defiValue * 100) / 100,
+                            token_count: data.balances?.data?.length || 0,
+                            project_count: data.projects?.data?.length || 0
                         },
                         balances: data.balances,
                         projects: data.projects,
                         net_curve: data.net_curve,
                         chains: data.chains,
-                        captured_responses: Object.keys(data).length
+                        captured_responses: Object.keys(data).length,
+                        timestamp: new Date().toISOString()
                     };
                 };
                 `
@@ -164,14 +204,17 @@ export default async function handler(req, res) {
         }
         
         const result = await response.json();
+        console.log(`✅ Scraping completed successfully for ${address}`);
         res.json(result);
         
     } catch (error) {
-        console.error('Scraping error:', error);
+        console.error('❌ Scraping error:', error);
         res.status(500).json({ 
             success: false, 
             error: error.message,
-            token_length: process.env.BROWSERLESS_TOKEN?.length || 0
+            address,
+            timestamp: new Date().toISOString(),
+            token_available: !!process.env.BROWSERLESS_TOKEN
         });
     }
 }
